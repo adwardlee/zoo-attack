@@ -1,5 +1,5 @@
 # zoo-attack
-ZOO: Zeroth Order Optimization based Black-box Attacks to Deep Neural Networks 
+Forked from https://github.com/huanzhang12/ZOO-Attack
 =====================================
 
 ZOO is a **z**eroth **o**rder **o**ptimization based attack to attack deep
