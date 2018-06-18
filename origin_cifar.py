@@ -41,7 +41,7 @@ def load_batch(fpath, label_key='labels'):
     final[:,:,:,2] = data[:,2,:,:]
 
     final /= 255
-    #final -= .5
+    final -= .5
 
     labels2 = np.zeros((len(labels), 10))
     labels2[np.arange(len(labels2)), labels] = 1
