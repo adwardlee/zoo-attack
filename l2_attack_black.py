@@ -411,8 +411,8 @@ class BlackBoxL2:
             var[i * 2 + 1].reshape(-1)[indice[i]] += 0.0001
             var[i * 2 + 2].reshape(-1)[indice[i]] -= 0.0001
 
-        ########### llj
-        newimg = self.sess.run(self.newimg, feed_dict={self.modifier: self.real_modifier})
+        ########### llj encoding
+        newimg = self.sess.run(self.newimg, feed_dict={self.modifier: var})
 
         ####
         encoder_newimg = np.transpose(newimg, axes=(0, 3, 1, 2))
@@ -425,6 +425,7 @@ class BlackBoxL2:
 
         encoder_newimg = np.concatenate([channel0, channel1, channel2], axis=1)
         encoder_newimg = np.transpose(encoder_newimg, axes=(0, 2, 3, 1))
+        #############################
 
         output = self.model.model.predict(encoder_newimg)
 
@@ -631,7 +632,7 @@ class BlackBoxL2:
                    # print('newimg ',newimg)
 
 
-                    ####
+                    #### llj encoding
                     encoder_newimg = np.transpose(newimg, axes=(0, 3, 1, 2))
 
                     channel0, channel1, channel2 = encoder_newimg[:, 0, :, :], encoder_newimg[:, 1, :, :], encoder_newimg[:, 2, :, :]
@@ -641,6 +642,7 @@ class BlackBoxL2:
 
                     encoder_newimg = np.concatenate([channel0, channel1, channel2], axis=1)
                     encoder_newimg = np.transpose(encoder_newimg, axes=(0, 2, 3, 1))
+                    #############################
 
                     output = self.model.model.predict(encoder_newimg)
 
