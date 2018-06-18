@@ -28,13 +28,13 @@ def show(img, name = "output.png"):
     Show MNSIT digits in the console.
     """
     np.save(name, img)
-    fig = np.around((img )*255)
+    fig = np.around((img + 0.5)*255)
     fig = fig.astype(np.uint8).squeeze()
     pic = Image.fromarray(fig)
     # pic.resize((512,512), resample=PIL.Image.BICUBIC)
     pic.save(name)
     remap = "  .*#"+"#"*100
-    img = (img.flatten())*3
+    img = (img.flatten() + 0.5)*3
     if len(img) != 784: return
     print("START")
     for i in range(28):
@@ -54,6 +54,7 @@ def generate_data(data, samples, targeted=True, start=0, inception=False):
     targets = []
     labels = []
     true_ids = []
+    encoding_inputs = []
     for i in range(samples):
         if targeted:
             if inception:
@@ -73,13 +74,14 @@ def generate_data(data, samples, targeted=True, start=0, inception=False):
                 targets.append(np.eye(data.test_labels.shape[1])[j])
                 labels.append(data.test_labels[start+i])
                 true_ids.append(start+i)
+                encoding_inputs.append(data.encoding_test_data[start+i])
         else:
             inputs.append(data.test_data[start+i])
             targets.append(data.test_labels[start+i])
             labels.append(data.test_labels[start+i])
             true_ids.append(start+i)
 
-        encoding_inputs.append(data.encoding_test_data[start+i])
+            encoding_inputs.append(data.encoding_test_data[start+i])
 
     inputs = np.array(inputs)
     encoding_inputs = np.array(encoding_inputs)
@@ -131,6 +133,8 @@ def main(args):
         all_inputs, all_targets, all_labels, all_true_ids, encoding_all = generate_data(data, samples=args['numimg'], targeted=not args['untargeted'],
                                         start=args['firstimg'], inception=is_inception)
         print('Done...')
+        #print('all_inputs : ', all_inputs.shape)
+        #print('encoding_all : ',encoding_all.shape)
         os.system("mkdir -p {}/{}".format(args['save'], args['dataset']))
         img_no = 0
         total_success = 0
@@ -141,6 +145,7 @@ def main(args):
             print(' adversarial_image_no: ', i)
             inputs = all_inputs[i:i+1]
             encoding_inputs = encoding_all[i:i+1]
+            #print('encoding_inputs shape: ', encoding_inputs)
             targets = all_targets[i:i+1]
             labels = all_labels[i:i+1]
             print("true labels:", np.argmax(labels), labels)
@@ -168,7 +173,18 @@ def main(args):
                 adv = adv.reshape((1,) + adv.shape)
             timeend = time.time()
             l2_distortion = np.sum((adv-inputs)**2)**.5
-            adversarial_predict = model.model.predict(adv)
+
+            ##### llj
+            encode_adv = np.transpose(adv, axes=(0, 3, 1, 2))
+            channel0, channel1, channel2 = encode_adv[:, 0, :, :], encode_adv[:, 1, :, :], encode_adv[:, 2, :, :]
+            channel0, channel1, channel2 = temp_encoder.tempencoding(channel0), temp_encoder.tempencoding(
+                                                        channel1), temp_encoder.tempencoding(
+                                                                            channel2)
+            encode_adv = np.concatenate([channel0, channel1, channel2], axis=1)
+            encode_adv = np.transpose(encode_adv, axes=(0, 2, 3, 1))
+
+            #### llj
+            adversarial_predict = model.model.predict(encode_adv)
             adversarial_predict = np.squeeze(adversarial_predict)
             adversarial_prob = np.sort(adversarial_predict)
             adversarial_class = np.argsort(adversarial_predict)
@@ -235,7 +251,7 @@ if __name__ == "__main__":
     # learning rate
     args['lr'] = 1e-2
     args['inception'] = False
-    args['use_tanh'] = True
+    args['use_tanh'] =False ##llj
     # args['use_resize'] = False
     if args['maxiter'] == 0:
         if args['attack'] == "white":

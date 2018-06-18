@@ -177,6 +177,9 @@ class CIFAR:
             channel2)
         validation_data = np.concatenate([channel0, channel1, channel2], axis=1)
         self.encoding_validation_data = np.transpose(validation_data, axes=(0, 2, 3, 1))
+        self.train_data -= 0.5
+        self.test_data -= 0.5
+        self.validation_data -= 0.5
 
 
 

@@ -167,6 +167,7 @@ class BlackBoxL2:
         """
 
         image_size, num_channels, num_labels = model.image_size, model.image_channels, model.num_labels
+        self.use_log = use_log
         self.model = model
         self.encoder = encoder(level=15)
         self.sess = sess
@@ -245,7 +246,7 @@ class BlackBoxL2:
 
         # the resulting image, tanh'd to keep bounded from -0.5 to 0.5
         # broadcast self.timg to every dimension of modifier
-        if use_tanh:
+        if self.use_tanh:
             self.newimg = tf.tanh(self.scaled_modifier + self.timg)/2
         else:
             self.newimg = self.scaled_modifier + self.timg
@@ -411,7 +412,7 @@ class BlackBoxL2:
             var[i * 2 + 2].reshape(-1)[indice[i]] -= 0.0001
 
         ########### llj
-        newimg = self.sess.run((self.newimg), feed_dict={self.modifier: self.real_modifier})
+        newimg = self.sess.run(self.newimg, feed_dict={self.modifier: self.real_modifier})
 
         ####
         encoder_newimg = np.transpose(newimg, axes=(0, 3, 1, 2))
@@ -425,13 +426,14 @@ class BlackBoxL2:
         encoder_newimg = np.concatenate([channel0, channel1, channel2], axis=1)
         encoder_newimg = np.transpose(encoder_newimg, axes=(0, 2, 3, 1))
 
-        output = self.model.predict(encoder_newimg)
+        output = self.model.model.predict(encoder_newimg)
 
         # distance to the input data
-        if use_tanh:
-            self.l2dist = np.sum(np.square(newimg - np.tanh(img) / 2), [1, 2, 3])
+        img, lab, img_const = self.sess.run([self.timg,self.tlab, self.const], feed_dict={self.modifier: self.real_modifier})
+        if self.use_tanh:
+            self.l2dist = np.sum(np.square(newimg - np.tanh(img) / 2), axis=(1, 2, 3))
         else:
-            self.l2dist = np.sum(np.square(newimg - img), [1, 2, 3])
+            self.l2dist = np.sum(np.square(newimg - img), axis=(1, 2, 3))
 
         # compute the probability of the label class versus the maximum other
         # self.tlab * self.output selects the Z value of real class
@@ -446,23 +448,23 @@ class BlackBoxL2:
         # If self.targeted is true, then the targets represents the target labels.
         # If self.targeted is false, then targets are the original class labels.
         if self.TARGETED:
-            if use_log:
+            if self.use_log:
                 # loss1 = - tf.log(self.real)
-                loss1 = np.amax(0.0, np.log(self.other + 1e-30) - np.log(self.real + 1e-30))
+                loss1 = np.maximum(0.0, np.log(self.other + 1e-30) - np.log(self.real + 1e-30))
             else:
                 # if targetted, optimize for making the other class (real) most likely
-                loss1 = np.amax(0.0, self.other - self.real + self.CONFIDENCE)
+                loss1 = np.maximum(0.0, self.other - self.real + self.CONFIDENCE)
         else:
-            if use_log:
+            if self.use_log:
                 # loss1 = tf.log(self.real)
-                loss1 = np.amax(0.0, np.log(self.real + 1e-30) - np.log(self.other + 1e-30))
+                loss1 = np.maximum(0.0, np.log(self.real + 1e-30) - np.log(self.other + 1e-30))
             else:
                 # if untargeted, optimize for making this class least likely.
-                loss1 = np.amax(0.0, self.real - self.other + self.CONFIDENCE)
+                loss1 = np.maximum(0.0, self.real - self.other + self.CONFIDENCE)
 
         # sum up the losses (output is a vector of #batch_size)
         self.loss2 = self.l2dist
-        self.loss1 = self.const * loss1
+        self.loss1 = img_const * loss1
         self.loss = self.loss1 + self.loss2
 
         ###
@@ -470,7 +472,7 @@ class BlackBoxL2:
         l2s = self.l2dist
         loss1 = self.loss1
         loss2 = self.loss2
-        scores = self.output
+        scores = output
         nimgs = newimg
 
 
@@ -624,7 +626,9 @@ class BlackBoxL2:
                 # print out the losses every 10%
                 if iteration%(self.print_every) == 0:
                     # print(iteration,self.sess.run((self.loss,self.real,self.other,self.loss1,self.loss2), feed_dict={self.modifier: self.real_modifier}))
-                    newimg = self.sess.run((self.newimg), feed_dict={self.modifier: self.real_modifier})
+                    newimg = self.sess.run(self.newimg, feed_dict={self.modifier: self.real_modifier})
+                   # print('newimg shape: ',newimg.shape)
+                   # print('newimg ',newimg)
 
 
                     ####
@@ -638,13 +642,13 @@ class BlackBoxL2:
                     encoder_newimg = np.concatenate([channel0, channel1, channel2], axis=1)
                     encoder_newimg = np.transpose(encoder_newimg, axes=(0, 2, 3, 1))
 
-                    output = self.model.predict(encoder_newimg)
+                    output = self.model.model.predict(encoder_newimg)
 
                     # distance to the input data
-                    if use_tanh:
-                        self.l2dist = np.sum(np.square(newimg - np.tanh(img) / 2), [1, 2, 3])
+                    if self.use_tanh:
+                        self.l2dist = np.sum(np.square(newimg - np.tanh(img) / 2), axis = (1, 2, 3))
                     else:
-                        self.l2dist = np.sum(np.square(newimg - img), [1, 2, 3])
+                        self.l2dist = np.sum(np.square(newimg - img), axis = (1, 2, 3))
 
                     # compute the probability of the label class versus the maximum other
                     # self.tlab * self.output selects the Z value of real class
@@ -659,32 +663,31 @@ class BlackBoxL2:
                     # If self.targeted is true, then the targets represents the target labels.
                     # If self.targeted is false, then targets are the original class labels.
                     if self.TARGETED:
-                        if use_log:
+                        if self.use_log:
                             # loss1 = - tf.log(self.real)
-                            loss1 = np.amax(0.0, np.log(self.other + 1e-30) - np.log(self.real + 1e-30))
+                            loss1 = np.maximum(0.0, np.log(self.other + 1e-30) - np.log(self.real + 1e-30))
                         else:
                             # if targetted, optimize for making the other class (real) most likely
-                            loss1 = np.amax(0.0, self.other - self.real + self.CONFIDENCE)
+                            loss1 = np.maximum(0.0, self.other - self.real + self.CONFIDENCE)
                     else:
-                        if use_log:
+                        if self.use_log:
                             # loss1 = tf.log(self.real)
-                            loss1 = np.amax(0.0, np.log(self.real + 1e-30) - np.log(self.other + 1e-30))
+                            loss1 = np.maximum(0.0, np.log(self.real + 1e-30) - np.log(self.other + 1e-30))
                         else:
                             # if untargeted, optimize for making this class least likely.
-                            loss1 = np.amax(0.0, self.real - self.other + self.CONFIDENCE)
+                            loss1 = np.maximum(0.0, self.real - self.other + self.CONFIDENCE)
 
                     # sum up the losses (output is a vector of #batch_size)
                     self.loss2 = self.l2dist
-                    self.loss1 = self.const * loss1
+                    self.loss1 = CONST * loss1
                     self.loss = self.loss1 + self.loss2
+                    print('self.loss', self.loss)
+                    print('l2dist ', self.l2dist)
+                    print('other ', self.other)
+                    sys.stdout.flush()
 
-
-
-
-
-
-
-                    print("[STATS][L2] iter = {}, cost = {}, time = {:.3f}, size = {}, loss = {:.5g}, real = {:.5g}, other = {:.5g}, loss1 = {:.5g}, loss2 = {:.5g}".format(iteration, eval_costs, train_timer, self.real_modifier.shape, self.loss[0], self.real[0], self.other[0], self.loss1[0], self.loss2[0]))
+################################################################
+                    print("[STATS][L2] iter = {}, cost = {}, time = {:.3f}, size = {}, loss = {}, real = {}, other = {}, loss1 = {}, loss2 = {}".format(iteration, eval_costs, train_timer, self.real_modifier.shape, self.loss[0], self.real[0], self.other[0], self.loss1[0], self.loss2[0]))
                     sys.stdout.flush()
                     # np.save('black_iter_{}'.format(iteration), self.real_modifier)
 
